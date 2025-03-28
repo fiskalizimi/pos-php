@@ -341,7 +341,8 @@ The steps to provide a valid signature are:
 
 1. **Serialization:** First, the coupon (either a Citizen or POS coupon) is serialized into a Protobuf binary format. This format ensures that the data can be transmitted efficiently and consistently.
    ```
-   byte[] posCouponProto = posCoupon.ToByteArray();
+   $posCouponProto = $posCoupon->toByteArray();
+
    ```
 2. **Base64 Encoding:** The serialized Protobuf binary data is then encoded into a Base64 string. Base64 is a binary-to-text encoding scheme that makes it easy to transfer data as a string format.
    ```
