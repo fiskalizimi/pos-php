@@ -346,22 +346,22 @@ The steps to provide a valid signature are:
    ```
 2. **Base64 Encoding:** The serialized Protobuf binary data is then encoded into a Base64 string. Base64 is a binary-to-text encoding scheme that makes it easy to transfer data as a string format.
    ```
-   var base64EncodedProto = Convert.ToBase64String(posCouponProto);
+   $base64EncodedProto = base64_encode($posCouponProto);
    ```
 3. **Hashing:** Before signing, the data is hashed using a SHA-256 cryptographic hash function. Hashing converts the coupon data into a fixed-length string of bytes, ensuring that even a small change in the original data will produce a completely different hash value.
    ```
-   var sha256 = SHA256.Create();
-   var hash = sha256.ComputeHash(base64EncodedProto);
+    $hash = hash('sha256', $base64EncodedProto, true);
    ```
 4. **Signature Creation:** The hash is then signed using the ECDSA private key. This generates a digital signature, which is unique to the data and the private key. The fiscalization system can later verify this signature using the corresponding public key.
    ```
-   var ecdsa = ECDsa.Create();
-   ecdsa.ImportFromPem(_key);  // Load the private key
-   var signature = ecdsa.SignHash(hash);
+    $ecdsa = openssl_pkey_get_private(file_get_contents($privateKeyFile));
+    $signature = '';
+    openssl_sign($hash, $signature, $ecdsa, OPENSSL_ALGO_SHA256);
+
    ```
 5. **Base64 Signature:** The generated signature is then encoded into a Base64 string, which makes it easy to include in the final request to the fiscalization service.
    ```
-   var encodedSignature = Convert.ToBase64String(signature);
+   $encodedSignature = base64_encode($signature);
    ```
 
 The [Signer class](fiskalizimi/Signer.cs) digitally signs both Citizen and POS coupons using the **ECDSA** algorithm. A private key is loaded and used to create a signature over the serialized coupon data.
@@ -409,20 +409,20 @@ class Signer
 
 The return value is a **base64-encoded** signature.
 
-### QR Code ###
+### QR Code Generation for Fiscal Receipts ###
 
-Printed fiscal coupon needs to also have a QR Code that can be scanned by citizens to verify the authenticity of the receipt.
+In the Fiscalization System, each printed fiscal coupon includes a QR Code. This QR Code allows citizens to scan and verify the authenticity of their receipts.
 
-In the Fiscalization System, QR codes are generated based on the serialized and signed data of a Citizen Coupon. The data, once encoded into a QR code, is typically printed on the customer receipt.
+The QR Code is generated based on serialized and signed data from the Citizen Coupon. The encoded data is then embedded within the QR Code, which is typically printed on the customer’s receipt.
 
 #### QR Code Data Structure ####
 
-In this implementation, the QR code contains:
+The QR code contains the following::
 
-1. The **Base64-encoded** serialized data of the [Citizen Coupon](#citizen-coupon).
-2. The **Base64-encoded** digital signature of that data.
+1. The **Base64-encoded** serialized data of the Citizen Coupon..
+2. The **Base64-encoded** digital signature of the serialized data..
 
-These two parts are combined into a single string, separated by a pipe | symbol, which forms the data to be encoded in the QR code.
+These two elements are combined into a single string, separated by a pipe (|) symbol. This combination forms the data to be encoded into the QR code.
 
 #### QR Code Generation in Code ####
 
