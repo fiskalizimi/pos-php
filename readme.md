@@ -61,23 +61,17 @@ Before integrating the system, ensure you have the following installed:
 
 ### Let PHP generate models automatically
 
-Unlike .NET (which can generate code at build time), in PHP you typically generate Protobuf classes ahead of time using protoc or in some CI/CD pipeline. Automatic runtime generation is less common in PHP.
+ PHP you typically generate Protobuf classes ahead of time using protoc or in some CI/CD pipeline. Automatic runtime generation is less common in PHP.
 
 Once you have the generated PHP classes (e.g., ```CitizenCoupon.php```, ```PosCoupon.php```, etc.), you can include them in your code via Composer autoload or manual ```require_once```.
 
 Here are the steps to generate Protobuf models:
 
 1. **Add the .proto file to your project:** Place your ```.proto``` file (in our case ```models.proto```) inside your project directory, usually in a ```Protos``` folder for organization. In the ```.php``` file, reference the ```.proto``` file to instruct the compiler to generate the necessary PHP classes.
-3. **Modify your .php file** to include Protobuf file generation instructions:
+
+2. **Build the project:** Run the following command to compile the ```.proto``` file and generate the PHP classes:
    ```
-   <ItemGroup>
-       <Protobuf Include="Protos/models.proto" GrpcServices="None" />
-   </ItemGroup>
-   ```
-   Setting ```GrpcServices="None"``` ensures that only data models are generated, without gRPC service code, since we are only interested in the models (e.g., ```PosCoupon```, ```CitizenCoupon```, ```Payment```, etc.).
-4. **Build the project:** Run the following command to compile the ```.proto``` file and generate the PHP classes:
-   ```
-   dotnet build
+   protoc -I=/```project_path```/atk/proto --php_out=/U```project_path```/atk/proto /```project_path```/atk/proto/model.proto
    ``` 
    This will automatically generate PHP classes that correspond to the Protobuf messages (like ```PosCoupon```, ```CitizenCoupon```, ```CouponItem```, etc.) in your ```.proto``` file.
 
@@ -85,7 +79,7 @@ Here are the steps to generate Protobuf models:
 
 ### Citizen Coupon ###
 
-The ```CitizenCoupon``` represents a simplified receipt that will be the part of QR Code. Below is the example structure created by the [```ModelBuilder``` class](fiskalizimi/ModelBuilder.cs):
+The ```CitizenCoupon``` represents a simplified receipt that will be the part of QR Code. Below is the example structure created by the [```ModelBuilder``` class](fiskalizimi/ModelBuilder.php):
 
 ```
 use Protos\CitizenCoupon;
@@ -424,30 +418,40 @@ The QR code contains the following::
 
 These two elements are combined into a single string, separated by a pipe (|) symbol. This combination forms the data to be encoded into the QR code.
 
-#### QR Code Generation in Code ####
+#### QR Code Generation Workflow ####
 
 The following steps show how the QR code data is generated in the ```Fiskalizimi``` class using the ```CitizenCoupon``` model.
 
 1. **Serialize the CitizenCoupon to Protobuf binary:** This ensures that the receipt data is in a compact binary format.
    ```
-   byte[] citizenCouponProto = citizenCoupon.ToByteArray();
+    $citizenCouponProto = $citizenCoupon->toByteArray();
+
    ```
 2. **Base64 encode the Protobuf data:** This converts the binary data into a Base64-encoded string, making it suitable for use in the QR code.
    ```
-   var base64EncodedProto = Convert.ToBase64String(citizenCouponProto);
+   $base64EncodedProto = base64_encode($citizenCouponProto);
+
    ```
 3. **Generate a digital signature:** Using the ECDSA private key, sign the Base64-encoded Protobuf data to ensure its authenticity and integrity.
    ```
-   var base64EncodedBytes = Encoding.UTF8.GetBytes(base64EncodedProto);
-   string signature = signer.SignBytes(base64EncodedBytes);
+   $base64EncodedBytes = utf8_encode($base64EncodedProto);
+    $signature = $signer->signBytes($base64EncodedBytes);
+
    ```
 4. **Combine the data and signature:** The Base64-encoded coupon data and the Base64-encoded signature are concatenated with a pipe | symbol to form the final string, which will be encoded into a QR code.
    ```
-   string qrCodeString = $"{base64EncodedProto}|{signature}";
+   $qrCodeString = $base64EncodedProto . "|" . $signature;
+
    ```
 5. **Print or display the QR code:** The resulting qrCodeString can now be encoded into a QR code and printed on the receipt or displayed on a screen.
 
 ![QR Code](qr.png)
+
+```
+// Use a library like phpqrcode to generate the QR Code
+QRcode::png($qrCodeString);`
+
+```
 
 Below is the method in the [Fiskalizimi class](fiskalizimi/Program.cs) that generates the QR code string for a Coupon:
 
