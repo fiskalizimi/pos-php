@@ -366,13 +366,43 @@ The steps to provide a valid signature are:
 The [Signer class](fiskalizimi/Signer.cs) digitally signs both Citizen and POS coupons using the **ECDSA** algorithm. A private key is loaded and used to create a signature over the serialized coupon data.
 
 ```
-public string SignBytes(byte[] data)
+<?php
+
+namespace fiskalizimi;
+
+class Signer
 {
-    var ecdsa = ECDsa.Create();
-    ecdsa.ImportFromPem(_key);
-    var hash = SHA256.Create().ComputeHash(data);
-    var signature = ecdsa.SignHash(hash);
-    return Convert.ToBase64String(signature);
+    private string $privateKey;
+
+    public function __construct(string $privateKeyPem)
+    {
+        $this->privateKey = $privateKeyPem;
+    }
+
+    public function signBytes(string $data): string
+    {
+        // Load the private key
+        $privateKey = openssl_pkey_get_private($this->privateKey);
+        if (!$privateKey) {
+            throw new \Exception('Error loading private key.');
+        }
+
+        // Hash the data using SHA-256
+        $hash = hash('sha256', $data, true);
+
+        // Sign the hash
+        $signature = '';
+        $success = openssl_sign($hash, $signature, $privateKey, OPENSSL_ALGO_SHA256);
+        if (!$success) {
+            throw new \Exception('Error signing data.');
+        }
+
+        // Free the private key resource
+        openssl_free_key($privateKey);
+
+        // Return the Base64-encoded signature
+        return base64_encode($signature);
+    }
 }
 ```
 
@@ -444,16 +474,67 @@ This method mimics the Citizen Mobile App, and is used for testing purposes. The
 This is how you prepare and submit the request:
 
 ```
-public static async Task SendQrCode()
-{
-    var builder = new ModelBuilder();
-    var signer = new Signer(PrivateKeyPem);
-    var citizenCoupon = builder.GetCitizenCoupon();
-    var qrCode = SignCitizenCoupon(citizenCoupon, signer);
+<?php
 
-    var request = new { citizen_id = 1, qr_code = qrCode };
-    var response = await new HttpClient().PostAsJsonAsync(url, request);
-    response.EnsureSuccessStatusCode();
+namespace fiskalizimi;
+
+use GuzzleHttp\Client;
+
+class Fiskalizimi
+{
+    public static function sendQrCode(string $url, string $privateKeyPem): void
+    {
+        try {
+            // Create the model builder
+            $builder = new ModelBuilder();
+            
+            // Create signer using the private key
+            $signer = new Signer($privateKeyPem);
+            
+            // Get the Citizen Coupon from the builder
+            $citizenCoupon = $builder->getCitizenCoupon();
+            
+            // Digitally sign the Citizen Coupon and generate the QR code
+            $qrCode = Fiskalizimi::signCitizenCoupon($citizenCoupon, $signer);
+            
+            // Prepare the request payload
+            $request = [
+                'citizen_id' => 1,
+                'qr_code' => $qrCode
+            ];
+            
+            // Send the request to the fiscalization service
+            $client = new Client();
+            $response = $client->post($url, [
+                'json' => $request
+            ]);
+            
+            // Ensure the response is successful
+            if ($response->getStatusCode() === 200) {
+                echo "QR code sent successfully!\n";
+            } else {
+                throw new \Exception("Failed to send QR code. HTTP Status: " . $response->getStatusCode());
+            }
+        } catch (\Exception $e) {
+            // Handle any errors
+            echo "Error sending QR code: " . $e->getMessage() . "\n";
+        }
+    }
+
+    private static function signCitizenCoupon($citizenCoupon, $signer): string
+    {
+        // Serialize the Citizen Coupon to Protobuf binary
+        $citizenCouponProto = $citizenCoupon->serializeToString();
+        
+        // Encode the serialized data to Base64
+        $base64EncodedProto = base64_encode($citizenCouponProto);
+        
+        // Sign the Base64-encoded data
+        $signature = $signer->signBytes($base64EncodedProto);
+        
+        // Combine the data and signature into a QR code string
+        return $base64EncodedProto . '|' . $signature;
+    }
 }
 ```
 
